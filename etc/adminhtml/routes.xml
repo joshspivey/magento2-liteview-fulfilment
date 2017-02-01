@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../../../../lib/internal/Magento/Framework/App/etc/routes.xsd">
+<!-- 	<router id="admin">
+        <route id="adminhtml">
+            <module name="JoshSpivey_LiteView" />
+        </route>
+    </router> -->
+    <router id="admin">
+        <route id="LiteView" frontName="LiteView">
+            <module name="JoshSpivey_LiteView" />
+        </route>
+    </router>
+</config>

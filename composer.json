@@ -1,0 +1,28 @@
+{
+  "name": "JoshSpivey/magento2-liteview",
+  "type": "magento2-module",
+  "description": ": 'Lite View for magento 2",
+  "keywords": ["Magento2", "Admin", "Lite View", "Fulfillment"],
+  "homepage": "https://github.com/joshspivey/",
+  "license": "AFL - Academic Free License (AFL 3.0)",
+  "version": "1.0.0",
+  "minimum-stability": "dev",
+  "authors": [
+    {
+      "name": "Josh Spivey"
+    }
+  ],
+  "require": {
+    "php": "~5.5.0|~5.6.0|~7.0.0",
+    "magento/magento-composer-installer": "*",
+    "gigasavvy/liteview-api": "*"
+  },
+  "extra": {
+    "map": [
+      [
+        "*",
+        "JoshSpivey/LiteView"
+      ]
+    ]
+  }
+}
