@@ -7,25 +7,40 @@ use JoshSpivey\LiteView\Helper\ConfigHelper;
 
 class Order extends \Magento\Framework\Model\AbstractModel implements OrderInterface
 {
+    const STATE_SENT_TO_WAREHOUSE   = 'lv_send_liteview';
+    const STATE_WAREHOUSE_ERROR     = 'lv_send_error';
+
     protected $orderRepository;
     protected $orderItemRepository;
     protected $orderData;
+    protected $order;
+    protected $_messageManager;
+
    
     public function __construct(
         \Magento\Framework\App\Action\Context $context,
         \Magento\Sales\Api\OrderRepositoryInterface $orderRepository,
-        \Magento\Sales\Api\OrderItemRepositoryInterface $orderItemRepository
+        \Magento\Sales\Api\OrderItemRepositoryInterface $orderItemRepository,
+        \Magento\Framework\Message\ManagerInterface $messageManager
     )
     {
         $this->orderRepository = $orderRepository;
         $this->orderItemRepository = $orderItemRepository;
+        $this->_messageManager = $messageManager;
+    }
 
+    public function setOrder($orderId)
+    {
+        $this->order = $this->orderRepository->get($orderId);
+        $this->orderData = $this->order->getData();
+
+        return $this;
     }
 
     private function getOrderDetails(){
         $orderDetails = [];
         $orderDetails['order_status'] = "Active";
-        $orderDetails['order_date'] = $this->orderData["created_at"];
+        $orderDetails['order_date'] = date('Y-m-d', strtotime($this->orderData["created_at"]));
         $orderDetails['order_number'] = $this->orderData["increment_id"];
         $orderDetails['order_source'] = "website.com";//pull from config
         $orderDetails['order_type'] = "Regular";
@@ -131,25 +146,22 @@ class Order extends \Magento\Framework\Model\AbstractModel implements OrderInter
         $item['item']['inventory_item_qty'] = $itemData['qty_ordered'];
         $item['item']['inventory_item_ext_price'] = "0.00";
 
-        return $item;
+        return ($itemData['weight'] > 0)? $item : [];
     }
 
-    private function getOrderNotes($customsAmount){
+    private function getOrderNotes($customsAmount, $requiresCustoms){
 
         $orderNotes = [];
         $orderNotes['note']['note_type'] = "shipping";
-        $orderNotes['note']['note_description'] = "Customs declaration total value of customs amount \$".$customsAmount." USD";
-        $orderNotes['note']['show_on_ps'] = "TRUE";
-        $orderNotes['note']['show_on_ps'] = "FALSE";
+        $orderNotes['note']['note_description'] = ($requiresCustoms)? "Customs declaration total value of customs amount \$".$customsAmount." USD" : "";
+        $orderNotes['note']['show_on_ps'] = ($requiresCustoms)? "TRUE" : "FALSE";
 
         return $orderNotes;
     }
 
-    public function getOrderData($orderId){
-        $order = $this->orderRepository->get($orderId);
-        $this->orderData = $order->getData();
+    public function getOrderData(){
 
-        $orderItems = $order->getAllItems();
+        $orderItems = $this->order->getAllItems();
         $itemArr = array_map(array($this, 'getItem'), $orderItems);
 
         $sum = array_sum(array_map(function($orderItem) {
@@ -157,20 +169,82 @@ class Order extends \Magento\Framework\Model\AbstractModel implements OrderInter
         }, $orderItems));
 
         $customsAmount = (round($this->orderData['base_grand_total'] - $this->orderData['base_shipping_amount']) == 0)? 1 : $sum;
+        $requiresCustoms = ($this->order->getShippingAddress()->getCountryId() != "US");
 
         $itemArr['total_line_items'] = count($itemArr);
 
         $data = [];
         $data['submit_order']['order_info'] = [
             "order_details" => $this->getOrderDetails(),
-            "billing_contact" => $this->getContact($order->getBillingAddress(), 'billto'),
-            "shipping_contact" => $this->getContact($order->getShippingAddress(), 'shipto'),
+            "billing_contact" => $this->getContact($this->order->getBillingAddress(), 'billto'),
+            "shipping_contact" => $this->getContact($this->order->getShippingAddress(), 'shipto'),
             "billing_details" => $this->getBillingDetails(),
-            "shipping_details" => $this->getShippingDetails($order->getBillingAddress()->getCountryId()),
+            "shipping_details" => $this->getShippingDetails($this->order->getBillingAddress()->getCountryId()),
             "order_items" => $itemArr,
-            "order_notes" => $this->getOrderNotes($customsAmount)
+            "order_notes" => $this->getOrderNotes($customsAmount, $requiresCustoms)
         ];
 
         return $data;
     }
+
+    public function changeLiteViewStatus($error, $warnings, $liteViewNumber = ''){
+
+
+        if (isset($error) && isset($error->error_description)) 
+        {
+            //If there was an error then the order never made it to Liteview, therefore leave the status untouched, but add an order history note
+            $history = $this->order->addStatusHistoryComment("Order: ".$this->orderData["increment_id"]." was not sent to the warehouse due to the following problem: ".$error->error_description, false);
+            $history->setIsCustomerNotified(false);
+            $this->_messageManager->addError("Order: ".$this->orderData["increment_id"]." could not be sent to the warehouse due to the following problem: ".$error->error_description);
+            $this->order->save();
+
+        }else if(isset($warnings) && $warnings != null && count($warnings->children()) > 0) {
+
+            $this->order->setLiteviewOrderId($liteViewNumber);
+            //If an item has warnings, but is not in error, then mark it as sent to the warehouse.  Keep an eye on this to determine the true status
+            $this->order->setData("state", "processing");
+            $this->order->setStatus(STATE_SENT_TO_WAREHOUSE);
+
+            foreach ($warnings as $warning){
+                $history = $this->order->addStatusHistoryComment("Warning when sending this item to the warehouse: ".$warning->warning, false);
+                $history->setIsCustomerNotified(false);
+                Mage::getSingleton("adminhtml/session")->addSuccess("Order: ".$this->orderData["increment_id"]." had the following warning: ".$warning->warning); //$returnWarning);
+                $this->_messageManager->addSuccess("Order: ".$this->orderData["increment_id"]." had the following warning: ".$warning->warning);
+            }
+
+            $history = $this->order->addStatusHistoryComment("The order was sent to the warehouse with one or more warnings.", false);
+            $history->setIsCustomerNotified(false);
+            $this->order->save();
+
+        }else{
+
+            $this->order->setLiteviewOrderId($liteViewNumber);
+            $this->order->setData("state", "processing");
+            $this->order->setStatus(STATE_SENT_TO_WAREHOUSE);
+            $history = $this->order->addStatusHistoryComment("The order(s) was sent to the warehouse successfully.", false);
+            $history->setIsCustomerNotified(false);
+            $this->order->save();
+            $this->_messageManager->addSuccess("The order (".$this->orderData["increment_id"].") was sent to the warehouse successfully.");
+        }
+    }
+
+    protected function validateOrder(){ 
+        $shippingAddress = $this->order->getShippingAddress();
+        
+        if (!isset($shippingAddress) || $shippingAddress == null){
+            $this->_messageManager->addError("Order: ".$this->orderData["increment_id"]." could not be sent to the warehouse due to the following problem: ".$error->error_description);
+            $this->_messageManager->addError('Order: '.$this->orderData["increment_id"].' is missing a valid shipping address.');
+            return false;
+        }
+        
+        $statesArr = ['complete', 'closed', 'canceled'];
+        
+        if(!in_array($this->orderData["state"], $statesArr)){
+            $this->_messageManager->addError('Order State: '.$this->orderData["state"].' Order: '.$this->orderData["increment_id"].' has a status of: '.$this->orderData["status"].' and cannot be sent to the warehouse at this time.');
+            return false;   
+        }
+        
+        return true;
+    }
+
 }
