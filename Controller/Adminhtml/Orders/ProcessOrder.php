@@ -8,16 +8,29 @@ class ProcessOrder extends \Magento\Framework\App\Action\Action
     /** @var \Magento\Framework\View\Result\PageFactory  */
     protected $orderModel;
     protected $liteviewConnection;
+    protected $adminConfigModel;
     protected $baseData = '<?xml version="1.0" encoding="UTF-8"?><toolkit></toolkit>';
 
     public function __construct(
         \Magento\Framework\App\Action\Context $context,
-        \JoshSpivey\LiteView\Model\Order $orderModel
+        \JoshSpivey\LiteView\Model\Order $orderModel,
+        \JoshSpivey\LiteView\Model\AdminConfig $adminConfigModel
     ){
         $this->orderModel = $orderModel;
+        $this->adminConfigModel = $adminConfigModel;
 
-        $this->liteviewConnection = new Connection('user', 'key');
-
+        if($this->adminConfigModel->getTestEnabled()){
+            $this->liteviewConnection = new Connection(
+                    $this->adminConfigModel->getDevUser(), 
+                    $this->adminConfigModel->getDevApiKey()
+                );
+        }else{
+            $this->liteviewConnection = new Connection(
+                    $this->adminConfigModel->getProdUser(), 
+                    $this->adminConfigModel->getProdApiKey()
+                );
+        }
+        
         parent::__construct($context);
     }
 
@@ -26,12 +39,19 @@ class ProcessOrder extends \Magento\Framework\App\Action\Action
 
         header('Content-Type: application/xml');
         $orderId = $this->getRequest()->getParam('order_id');
-        echo $this->getOrderXml($orderId);
+        echo $this->getOrderXml($orderId, 'order');
     }
 
-    public function getOrderXml($orderId){
+    public function getOrderXml($orderId, $dataType){
         
-        $orderArr = $this->orderModel->setOrder($orderId)->getOrderData();
+        $orderArr = [];
+        if($dataType == "order"){
+           $orderArr = $this->orderModel->setOrder($orderId)->getOrderData();
+        }
+        if($dataType == "cancel"){
+            $orderArr = $this->orderModel->setOrder($orderId)->getOrderCancelData();
+        }
+
         $xml = new SimpleXMLElement($this->baseData);
 
         return $this->_objectManager->create('JoshSpivey\LiteView\Helper\DataHelper')->array_to_xml($orderArr, $xml);
@@ -41,9 +61,9 @@ class ProcessOrder extends \Magento\Framework\App\Action\Action
     {
           
         if($this->orderModel->setOrder($orderId)->validateOrder() == true){
-            break;
+            return;
         }
-        $this->sendToLiteView($this->getOrderXml());
+        $this->sendToLiteView($this->getOrderXml($orderId, 'order'));
     }
 
     public function massSendToWarehouseAction()
@@ -54,7 +74,7 @@ class ProcessOrder extends \Magento\Framework\App\Action\Action
             if($this->orderModel->setOrder($orderId)->validateOrder() == true){
                 continue;
             }
-            $this->sendToLiteView($this->getOrderXml($orderId));
+            $this->sendToLiteView($this->getOrderXml($orderId, 'order'));
         }
 
         $this->_redirect($this->_redirect->getRefererUrl());

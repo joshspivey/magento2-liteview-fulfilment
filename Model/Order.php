@@ -14,6 +14,7 @@ class Order extends \Magento\Framework\Model\AbstractModel implements OrderInter
     protected $orderItemRepository;
     protected $orderData;
     protected $order;
+    protected $adminConfigModel;
     protected $_messageManager;
 
    
@@ -21,12 +22,14 @@ class Order extends \Magento\Framework\Model\AbstractModel implements OrderInter
         \Magento\Framework\App\Action\Context $context,
         \Magento\Sales\Api\OrderRepositoryInterface $orderRepository,
         \Magento\Sales\Api\OrderItemRepositoryInterface $orderItemRepository,
-        \Magento\Framework\Message\ManagerInterface $messageManager
+        \Magento\Framework\Message\ManagerInterface $messageManager,
+        \JoshSpivey\LiteView\Model\AdminConfig $adminConfigModel
     )
     {
         $this->orderRepository = $orderRepository;
         $this->orderItemRepository = $orderItemRepository;
         $this->_messageManager = $messageManager;
+        $this->adminConfigModel = $adminConfigModel;
     }
 
     public function setOrder($orderId)
@@ -42,7 +45,7 @@ class Order extends \Magento\Framework\Model\AbstractModel implements OrderInter
         $orderDetails['order_status'] = "Active";
         $orderDetails['order_date'] = date('Y-m-d', strtotime($this->orderData["created_at"]));
         $orderDetails['order_number'] = $this->orderData["increment_id"];
-        $orderDetails['order_source'] = "website.com";//pull from config
+        $orderDetails['order_source'] = $this->adminConfigModel->getOrderSource();
         $orderDetails['order_type'] = "Regular";
         $orderDetails['catalog_name'] = "Default";
         $orderDetails['gift_order'] = "False";
@@ -93,6 +96,7 @@ class Order extends \Magento\Framework\Model\AbstractModel implements OrderInter
     private function getShippingDetails($countryId){
         $method = $this->orderData["shipping_method"];
 
+        //Add in options to multi select in a admin page to allow mapping of shipping methods
         $groupArr = ['customshipprice_customshipprice', 'ups_03', 'ups_02', 'ups_01'];
 
         $failSafe = $method;
@@ -187,6 +191,17 @@ class Order extends \Magento\Framework\Model\AbstractModel implements OrderInter
         return $data;
     }
 
+    public function getOrderCancelData(){
+        $data = [];
+        $data['cancel_order']['order_info']['order_details'] = [
+            "client_order_number" => $this->order->getIncrementId(),
+            "ifs_order_number" => $this->order->getLiteviewOrderId(),
+            "notes_for_cancellation" => "cancel order"
+        ];
+
+        return $data;
+    }
+
     public function changeLiteViewStatus($error, $warnings, $liteViewNumber = ''){
 
 
@@ -196,7 +211,6 @@ class Order extends \Magento\Framework\Model\AbstractModel implements OrderInter
             $history = $this->order->addStatusHistoryComment("Order: ".$this->orderData["increment_id"]." was not sent to the warehouse due to the following problem: ".$error->error_description, false);
             $history->setIsCustomerNotified(false);
             $this->_messageManager->addError("Order: ".$this->orderData["increment_id"]." could not be sent to the warehouse due to the following problem: ".$error->error_description);
-            $this->order->save();
 
         }else if(isset($warnings) && $warnings != null && count($warnings->children()) > 0) {
 
@@ -208,13 +222,12 @@ class Order extends \Magento\Framework\Model\AbstractModel implements OrderInter
             foreach ($warnings as $warning){
                 $history = $this->order->addStatusHistoryComment("Warning when sending this item to the warehouse: ".$warning->warning, false);
                 $history->setIsCustomerNotified(false);
-                Mage::getSingleton("adminhtml/session")->addSuccess("Order: ".$this->orderData["increment_id"]." had the following warning: ".$warning->warning); //$returnWarning);
+                $this->_messageManager->addSuccess("Order: ".$this->orderData["increment_id"]." had the following warning: ".$warning->warning); //$returnWarning);
                 $this->_messageManager->addSuccess("Order: ".$this->orderData["increment_id"]." had the following warning: ".$warning->warning);
             }
 
             $history = $this->order->addStatusHistoryComment("The order was sent to the warehouse with one or more warnings.", false);
             $history->setIsCustomerNotified(false);
-            $this->order->save();
 
         }else{
 
@@ -223,9 +236,9 @@ class Order extends \Magento\Framework\Model\AbstractModel implements OrderInter
             $this->order->setStatus(STATE_SENT_TO_WAREHOUSE);
             $history = $this->order->addStatusHistoryComment("The order(s) was sent to the warehouse successfully.", false);
             $history->setIsCustomerNotified(false);
-            $this->order->save();
             $this->_messageManager->addSuccess("The order (".$this->orderData["increment_id"].") was sent to the warehouse successfully.");
         }
+        $this->order->save();
     }
 
     protected function validateOrder(){ 
@@ -236,7 +249,7 @@ class Order extends \Magento\Framework\Model\AbstractModel implements OrderInter
             $this->_messageManager->addError('Order: '.$this->orderData["increment_id"].' is missing a valid shipping address.');
             return false;
         }
-        
+
         $statesArr = ['complete', 'closed', 'canceled'];
         
         if(!in_array($this->orderData["state"], $statesArr)){

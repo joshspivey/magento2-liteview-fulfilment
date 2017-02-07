@@ -8,6 +8,6 @@ class ConfigHelper extends \Magento\Framework\App\Helper\AbstractHelper
      */
     public function getConfig($req)
     {
-        return $this->scopeConfig->getValue('liteview/' . $req);
+        return $this->scopeConfig->getValue('fullfilment/' . $req);
     }
 }
