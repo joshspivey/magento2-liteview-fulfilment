@@ -1,25 +1,51 @@
 <?xml version="1.0"?>
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../../Magento/Backend/etc/system_file.xsd">
     <system>
-        <tab id="adminsample" translate="label" sortOrder="700">
-            <label>AdminSample</label>
+        <tab id="fullfilment" translate="label" sortOrder="700">
+            <label>Fullfilment</label>
         </tab>
-        <section id="adminsample" translate="label" sortOrder="500" showInDefault="1" showInWebsite="1" showInStore="1">
+        <section id="fullfilment" translate="label" sortOrder="500" showInDefault="1" showInWebsite="1" showInStore="1">
             <class>separator-top</class>
-            <label>Configuration</label>
-            <tab>adminsample</tab>
+            <label>Liteview</label>
+            <tab>fullfilment</tab>
             <resource>JoshSpivey_LiteView::config</resource>
             <group id="txt" translate="label" type="text" sortOrder="10" showInDefault="1" showInWebsite="0" showInStore="0">
-                <label>txtsample</label>
-                <field id="textsample" translate="label" type="text" sortOrder="1" showInDefault="1" showInWebsite="0" showInStore="0">
-                    <label>text sample</label>
+                <label>Account Details</label>
+                <field id="testEnabled" translate="label" type="select" sortOrder="1" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Enable Test</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="orderSource" translate="label" type="text" sortOrder="1" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Order Source: ex. www.site.com</label>
+                </field>
+                <field id="prodUser" translate="label" type="text" sortOrder="1" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Production User:</label>
+                </field>
+                <field id="prodApiKey" translate="label" type="text" sortOrder="1" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Production API Key:</label>
+                </field>
+                <field id="devUser" translate="label" type="text" sortOrder="1" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Dev User:</label>
+                </field>
+                <field id="devApiKey" translate="label" type="text" sortOrder="1" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Dev API Key:</label>
                 </field>
             </group>
-            <group id="yn" translate="label" type="text" sortOrder="20" showInDefault="1" showInWebsite="0" showInStore="0">
-                <label>ynsample</label>
-                <field id="ynsample" translate="label" type="select" sortOrder="1" showInDefault="1" showInWebsite="0" showInStore="0">
-                    <label>Yes no sample</label>
+            <group id="shippingSettings" translate="label" type="text" sortOrder="20" showInDefault="1" showInWebsite="0" showInStore="0">
+                <label>Shipping Settings</label>
+                <field id="overideAllowedMethods" translate="label" type="select" sortOrder="1" showInDefault="1" showInWebsite="0" showInStore="0">
+                    <label>Overide Allowed Methods</label>
                     <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="allowed_methods_ups" translate="label" type="multiselect" sortOrder="170" showInDefault="1" showInWebsite="1" showInStore="0" canRestore="1">
+                    <label>UPS Allowed Methods</label>
+                    <source_model>Magento\Ups\Model\Config\Source\Method</source_model>
+                    <can_be_empty>1</can_be_empty>
+                </field>
+                <field id="allowed_methods_fedex" translate="label" type="multiselect" sortOrder="171" showInDefault="1" showInWebsite="1" showInStore="0" canRestore="1">
+                    <label>Fedex Allowed Methods</label>
+                    <source_model>Magento\Fedex\Model\Source\Method</source_model>
+                    <can_be_empty>1</can_be_empty>
                 </field>
             </group>
         </section>
