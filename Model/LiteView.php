@@ -58,7 +58,8 @@ class LiteView extends \Magento\Framework\Model\AbstractModel implements LiteVie
     }
 
     public function sendCancelOrder($cancelOrderXml, $orderId){
-
+        $orderResponse = $this->liteviewConnection->post('order/cancel', $cancelOrderXml);
+        $responseXml = simplexml_load_string($orderResponse->getBody()->getContents());
     }
 
 
