@@ -4,6 +4,7 @@ namespace JoshSpivey\LiteView\Model;
 
 use JoshSpivey\LiteView\Api\Data\OrderInterface;
 use JoshSpivey\LiteView\Helper\ConfigHelper;
+use SimpleXMLElement;
 
 class Order extends \Magento\Framework\Model\AbstractModel implements OrderInterface
 {
@@ -16,6 +17,8 @@ class Order extends \Magento\Framework\Model\AbstractModel implements OrderInter
     protected $order;
     protected $adminConfigModel;
     protected $_messageManager;
+    protected $dataHelper;
+    protected $baseData = '<?xml version="1.0" encoding="UTF-8"?><toolkit></toolkit>';
 
    
     public function __construct(
@@ -23,14 +26,18 @@ class Order extends \Magento\Framework\Model\AbstractModel implements OrderInter
         \Magento\Sales\Api\OrderRepositoryInterface $orderRepository,
         \Magento\Sales\Api\OrderItemRepositoryInterface $orderItemRepository,
         \Magento\Framework\Message\ManagerInterface $messageManager,
-        \JoshSpivey\LiteView\Model\AdminConfig $adminConfigModel
+        \JoshSpivey\LiteView\Model\AdminConfig $adminConfigModel,
+        \JoshSpivey\LiteView\Helper\DataHelper $dataHelper
     )
     {
         $this->orderRepository = $orderRepository;
         $this->orderItemRepository = $orderItemRepository;
         $this->_messageManager = $messageManager;
         $this->adminConfigModel = $adminConfigModel;
+        $this->dataHelper = $dataHelper;
+
     }
+
 
     public function setOrder($orderId)
     {
@@ -38,6 +45,21 @@ class Order extends \Magento\Framework\Model\AbstractModel implements OrderInter
         $this->orderData = $this->order->getData();
 
         return $this;
+    }
+
+    public function getOrderXml($orderId, $dataType){
+        
+        $orderArr = [];
+        if($dataType == "order"){
+           $orderArr = $this->setOrder($orderId)->getOrderData();
+        }
+        if($dataType == "cancel"){
+            $orderArr = $this->setOrder($orderId)->getOrderCancelData();
+        }
+
+        $xml = new SimpleXMLElement($this->baseData);
+
+        return $this->dataHelper->array_to_xml($orderArr, $xml);
     }
 
     private function getOrderDetails(){
@@ -71,11 +93,12 @@ class Order extends \Magento\Framework\Model\AbstractModel implements OrderInter
             $contact[$prefix.'_address1'] = $contactData['street'];
             $contact[$prefix.'_address2'] = "";
         }
+        // echo $contactObj->getCountryId();die;
         $contact[$prefix.'_address3'] = "";
         $contact[$prefix.'_city'] = $contactData['city'];
-        $contact[$prefix.'_state'] = $contactData['region'];
+        $contact[$prefix.'_state'] = $contactObj->getRegionCode();
         $contact[$prefix.'_postal_code'] = $contactData['postcode'];
-        $contact[$prefix.'_country'] = $contactData['country_id'];
+        $contact[$prefix.'_country'] = $contactObj->getCountryId();//$contactData['country_id'];
         $contact[$prefix.'_telephone_no'] = $contactData['telephone'];
         $contact[$prefix.'_email'] = $contactData['email'];
 
@@ -108,7 +131,7 @@ class Order extends \Magento\Framework\Model\AbstractModel implements OrderInter
         if($method == 'fedex_FEDEX_GROUND' && $countryId == "CA"){
             $failSafe = 'fedex_INTERNATIONAL_GROUND';
         }
-
+        // similar_text($var_1, $var_2, $percent)
         $shipMethodArr = [//move to config i18n
             "freeshipping_freeshipping" => "Will Call Will Call/Pick Up",
             "fedex_FEDEX_2_DAY" => "FedEx 2 Day",
@@ -147,7 +170,7 @@ class Order extends \Magento\Framework\Model\AbstractModel implements OrderInter
         $item['item']['inventory_item_sku'] = trim($itemData['sku']);
         $item['item']['inventory_item_description'] = $itemData['name'];
         $item['item']['inventory_item_price'] = "0.00";
-        $item['item']['inventory_item_qty'] = $itemData['qty_ordered'];
+        $item['item']['inventory_item_qty'] = round($itemData['qty_ordered']);
         $item['item']['inventory_item_ext_price'] = "0.00";
 
         return ($itemData['weight'] > 0)? $item : [];
@@ -166,6 +189,7 @@ class Order extends \Magento\Framework\Model\AbstractModel implements OrderInter
     public function getOrderData(){
 
         $orderItems = $this->order->getAllItems();
+        $orderItemArr = [];
         $itemArr = array_map(array($this, 'getItem'), $orderItems);
 
         $sum = array_sum(array_map(function($orderItem) {
@@ -174,18 +198,19 @@ class Order extends \Magento\Framework\Model\AbstractModel implements OrderInter
 
         $customsAmount = (round($this->orderData['base_grand_total'] - $this->orderData['base_shipping_amount']) == 0)? 1 : $sum;
         $requiresCustoms = ($this->order->getShippingAddress()->getCountryId() != "US");
-
-        $itemArr['total_line_items'] = count($itemArr);
-
+        $orderItemArr = [];
+        $orderItemArr['total_line_items'] = count($itemArr);
+        array_push($orderItemArr, $itemArr);
+        // echo print_r($itemArr);die;
         $data = [];
         $data['submit_order']['order_info'] = [
             "order_details" => $this->getOrderDetails(),
             "billing_contact" => $this->getContact($this->order->getBillingAddress(), 'billto'),
             "shipping_contact" => $this->getContact($this->order->getShippingAddress(), 'shipto'),
             "billing_details" => $this->getBillingDetails(),
-            "shipping_details" => $this->getShippingDetails($this->order->getBillingAddress()->getCountryId()),
-            "order_items" => $itemArr,
-            "order_notes" => $this->getOrderNotes($customsAmount, $requiresCustoms)
+            "shipping_details" => $this->getShippingDetails($this->order->getShippingAddress()->getCountryId()),
+            "order_notes" => $this->getOrderNotes($customsAmount, $requiresCustoms),
+            "order_items" => $orderItemArr
         ];
 
         return $data;
@@ -207,9 +232,9 @@ class Order extends \Magento\Framework\Model\AbstractModel implements OrderInter
 
         if (isset($error) && isset($error->error_description)) 
         {
+            // echo $error->error_description;die;
             //If there was an error then the order never made it to Liteview, therefore leave the status untouched, but add an order history note
-            $history = $this->order->addStatusHistoryComment("Order: ".$this->orderData["increment_id"]." was not sent to the warehouse due to the following problem: ".$error->error_description, false);
-            $history->setIsCustomerNotified(false);
+            $this->order->addStatusHistoryComment("Order: ".$this->orderData["increment_id"]." was not sent to the warehouse due to the following problem: ".$error->error_description)->setIsCustomerNotified(false);
             $this->_messageManager->addError("Order: ".$this->orderData["increment_id"]." could not be sent to the warehouse due to the following problem: ".$error->error_description);
 
         }else if(isset($warnings) && $warnings != null && count($warnings->children()) > 0) {
@@ -241,7 +266,7 @@ class Order extends \Magento\Framework\Model\AbstractModel implements OrderInter
         $this->order->save();
     }
 
-    protected function validateOrder(){ 
+    public function validateOrder(){ 
         $shippingAddress = $this->order->getShippingAddress();
         
         if (!isset($shippingAddress) || $shippingAddress == null){
@@ -252,7 +277,7 @@ class Order extends \Magento\Framework\Model\AbstractModel implements OrderInter
 
         $statesArr = ['complete', 'closed', 'canceled'];
         
-        if(!in_array($this->orderData["state"], $statesArr)){
+        if(in_array($this->orderData["state"], $statesArr)){
             $this->_messageManager->addError('Order State: '.$this->orderData["state"].' Order: '.$this->orderData["increment_id"].' has a status of: '.$this->orderData["status"].' and cannot be sent to the warehouse at this time.');
             return false;   
         }

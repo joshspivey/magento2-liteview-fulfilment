@@ -1,69 +1,62 @@
 <?php
 namespace JoshSpivey\LiteView\Controller\Adminhtml\Orders;
-use Liteview\Connection;
-use SimpleXMLElement;
+
 
 class ProcessOrder extends \Magento\Framework\App\Action\Action
 {
     /** @var \Magento\Framework\View\Result\PageFactory  */
     protected $orderModel;
-    protected $liteviewConnection;
-    protected $adminConfigModel;
-    protected $baseData = '<?xml version="1.0" encoding="UTF-8"?><toolkit></toolkit>';
+    protected $liteViewModel;
+    protected $orderId;
+    protected $shipmentId;
+    
 
     public function __construct(
         \Magento\Framework\App\Action\Context $context,
         \JoshSpivey\LiteView\Model\Order $orderModel,
-        \JoshSpivey\LiteView\Model\AdminConfig $adminConfigModel
+        \JoshSpivey\LiteView\Model\LiteView $liteViewModel
     ){
         $this->orderModel = $orderModel;
-        $this->adminConfigModel = $adminConfigModel;
-
-        if($this->adminConfigModel->getTestEnabled()){
-            $this->liteviewConnection = new Connection(
-                    $this->adminConfigModel->getDevUser(), 
-                    $this->adminConfigModel->getDevApiKey()
-                );
-        }else{
-            $this->liteviewConnection = new Connection(
-                    $this->adminConfigModel->getProdUser(), 
-                    $this->adminConfigModel->getProdApiKey()
-                );
-        }
+        $this->liteViewModel = $liteViewModel;
         
         parent::__construct($context);
     }
 
     public function execute()
     {
+        // echo print_r($this->getRequest()->getParams());
+        $action = $this->getRequest()->getParam('action');
+        // echo $action;
+        $this->orderId = $this->getRequest()->getParam('order_id');
+        $this->shipmentId = $this->getRequest()->getParam('shipment_id');
 
-        header('Content-Type: application/xml');
-        $orderId = $this->getRequest()->getParam('order_id');
-        echo $this->getOrderXml($orderId, 'order');
+        switch($action){
+            case "send":
+                $this->sendToWarehouseAction();
+            break;
+            case "masssend":
+                $this->massSendToWarehouseAction();
+            break;
+            case "cancel":
+                $this->cancelOrderAction();
+            break;
+            default:
+                header('Content-Type: application/xml');
+                echo $this->orderModel->getOrderXml($this->orderId, 'order');
+            break;
+        }
     }
 
-    public function getOrderXml($orderId, $dataType){
-        
-        $orderArr = [];
-        if($dataType == "order"){
-           $orderArr = $this->orderModel->setOrder($orderId)->getOrderData();
-        }
-        if($dataType == "cancel"){
-            $orderArr = $this->orderModel->setOrder($orderId)->getOrderCancelData();
-        }
 
-        $xml = new SimpleXMLElement($this->baseData);
-
-        return $this->_objectManager->create('JoshSpivey\LiteView\Helper\DataHelper')->array_to_xml($orderArr, $xml);
-    }
-
-    public function postOrder()
+    public function sendToWarehouseAction()
     {
+        // echo 'test';die;
           
-        if($this->orderModel->setOrder($orderId)->validateOrder() == true){
+        if($this->orderModel->setOrder($this->orderId)->validateOrder() != true){
             return;
         }
-        $this->sendToLiteView($this->getOrderXml($orderId, 'order'));
+        $this->liteViewModel->sendOrderToLiteView($this->orderModel->getOrderXml($this->orderId, 'order'), $this->orderId);
+        $this->_redirect($this->_redirect->getRefererUrl());
     }
 
     public function massSendToWarehouseAction()
@@ -71,25 +64,18 @@ class ProcessOrder extends \Magento\Framework\App\Action\Action
         $orderIds = $this->getRequest()->getParam('order_ids');
 
         foreach($orderIds as $orderId){
-            if($this->orderModel->setOrder($orderId)->validateOrder() == true){
+            if($this->orderModel->setOrder($orderId)->validateOrder() != true){
                 continue;
             }
-            $this->sendToLiteView($this->getOrderXml($orderId, 'order'));
+            $this->liteViewModel->sendOrderToLiteView($this->orderModel->getOrderXml($orderId, 'order'), $orderId);
         }
 
         $this->_redirect($this->_redirect->getRefererUrl());
     }
 
-    private function sendToLiteView($orderXml){
-
-        $orderResponse = $this->liteviewConnection->get('order/methods');
-        $this->liteviewConnection->post('order/submit', $orderXml);
-        $orderId = $this->getRequest()->getParam('order_id');
-        $xml = new SimpleXMLElement($orderResponse);
-        $error = $xml->error;
-        $warnings = $xml->warnings;
-        $liteViewNumber = $xml->submit_order->order_information->order_details->ifs_order_number;
-        $this->orderModel->setOrder($orderId)->changeLiteViewStatus($error, $warnings, $liteViewNumber);
-        
+    public function cancelOrderAction()
+    {
+        $this->liteViewModel->sendCancelOrder($this->orderModel->getOrderXml($this->orderId, 'cancel'), $this->orderId);
     }
+
 }
