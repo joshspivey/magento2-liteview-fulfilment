@@ -40,6 +40,12 @@ class ProcessOrder extends \Magento\Framework\App\Action\Action
             case "cancel":
                 $this->cancelOrderAction();
             break;
+            case "updatetracking":
+                $this->updateTrackingAction();
+            break;
+            case "orderstatus":
+                $this->updateOrderStatusAction();
+            break;
             default:
                 header('Content-Type: application/xml');
                 echo $this->orderModel->getOrderXml($this->orderId, 'order');
@@ -76,6 +82,14 @@ class ProcessOrder extends \Magento\Framework\App\Action\Action
     public function cancelOrderAction()
     {
         $this->liteViewModel->sendCancelOrder($this->orderModel->getOrderXml($this->orderId, 'cancel'), $this->orderId);
+    }
+
+    public function updateTrackingAction(){
+        $this->liteViewModel->checkLiteviewTracking();
+    }
+
+    public function updateOrderStatusAction(){
+        $this->liteViewModel->checkLiteviewOrderStatus();
     }
 
 }

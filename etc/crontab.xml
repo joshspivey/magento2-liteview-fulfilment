@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Cron:etc/crontab.xsd">
+    <group id="default"> <!-- Doesn't need to be unique -->
+        <job name="updateTracking" instance="JoshSpivey\LiteView\Cron\TrackingCron" method="updateTracking">
+            <schedule>0 */6 * * *</schedule>
+        </job>
+        <job name="orderStatus" instance="JoshSpivey\LiteView\Cron\TrackingCron" method="orderStatus">
+            <schedule>0 */3 * * *</schedule>
+        </job>
+    </group>
+</config>
